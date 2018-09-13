@@ -125,11 +125,9 @@ mapping = read.csv('FM_to_TCGA.manual_mapping.csv', row.names=1)
 ```
 * upload to the database
 ```R
-require(RMySQL)
-require(configr)
-mycnf = read.config('~/.my.cnf')$client
+source('~/github/utilr/mysql.R')
 dbname='var_dbGAP_phs001179_v1_p1_20180823'
-con = dbConnect(MySQL(), host=mycnf$host, port=integer(mycnf$port), user=mycnf$user, password=mycnf$password, dbname=dbname)
+con = mycnfConnect(dbname=dbname)
 dbWriteTable(con, name='clinical_merged', value=clinical)
 dbWriteTable(con, name='mapping_to_TCGA', value=mapping)
 dbDisconnect(con)
