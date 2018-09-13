@@ -1,39 +1,29 @@
 # extract the variant info from FoundationMedicine data from dbGAP, calculate the allele frequencys.
-* indication: #v/#total samples
-* variantAF: #v/#total variant in the gene
-* geneAF: #anyMutInTheGene/#total samples
-
-## download phenotype data from [dbGap](ftp://ftp.ncbi.nlm.nih.gov/dbgap/studies/phs001179/phs001179.v1.p1/)
+* indication level: #patients with the variant/#total patients
+* gene level: #patients with the gene mutated/#total patients
+* variant in gene: #patients with the variant/#patients with the gene mutated
 
 ## Browse and Download data from [GDC here](https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/foundation-medicine/foundation-medicine)
 ### download detailed clinical data from [Clinical and Biospecimen]()
-### download vcf files from GDC
-* visit [FM-ad](https://portal.gdc.cancer.gov/repository?facetTab=files&filters=%7B%22op%22%3A%22and%22%2C%22content%22%3A%5B%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22cases.project.project_id%22%2C%22value%22%3A%5B%22FM-AD%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.data_category%22%2C%22value%22%3A%5B%22Simple%20Nucleotide%20Variation%22%5D%7D%7D%5D%7D&searchTableTab=files)
-* select Annotated Somatic Mutation (via FM simple somatic mutation and FoundationOne Annoation)
-* download via GDC data transfer tool (*.vcf.gz, *.vep.vcf.gz, n=18004)
+### download vcf files (annotated somatic mutations) from [Short variants]
+* download via GDC data transfer tool (*.vcf.gz, *.vep.vcf.gz, n=18004+18004)
 
-## check out
-```sh
-cd ~/work/Foundation_Medicine/Test_Genotype_Files
-find -name '*.gz' | xargs gunzip
-:w
-```
 
 ## liftover from hg38 to hg19
 ```
-# install requirements
+#install requirements
 conda install -c bioconda ucsc-liftover ucsc-twobittofa picard
+#download chain file
 cd ~/data
-# download chain file
 wget http://hgdownload.cse.ucsc.edu/goldenpath/hg38/liftOver/hg38ToHg19.over.chain.gz
-    #liftOver oldFile map.chain newFile unMapped
-# download genome file
+#download genome file
 wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.2bit
 twoBitToFa hg19.2bit hg19.fa
 
-# lift over with picard
+#lift over with picard
 picard -Xmx10g CreateSequenceDictionary R=hg19.fa O=hg19.dict
-    #! liftOver failed because of pos+1 and mismatching reference, should be a bug of picard?
+    #? liftOver failed because of pos+1 and mismatching reference, should be a bug of picard?
+    #: NO, it is a mistake of FM
 
 # lift over with liftover: bed [0,1), vcf,igv [1,1], 
 cat test1.vcf | sed '/^#/d' | awk '{ print $1, $2-1, $2, $8}' > test1.tmp
@@ -45,9 +35,6 @@ Turn out that the FM liftover to hg38 make a position+1 shift, so that a liftove
 ```
 conda install -c bioconda snpeff
 snpEff databases | grep -i human
-snpEff download -v GRCh38.p7.RefSeq
-snpEff -Xmx4g GRCh38.p7.RefSeq test1.vcf > test1.hg38.eff.vcf
-    # note that the eff annotation is inconsistent with FM
 snpEff -Xmx4g -v GRCh37.p13.RefSeq test1.hg19.vcf > test1.hg19.ann.vcf
 ```
 SnpEff on 18K file will be very time consuming, thinking of generate a combined vcf file.
@@ -55,6 +42,7 @@ SnpEff on 18K file will be very time consuming, thinking of generate a combined 
 ## fix and merge the vcf files
 - Fix: by replace CHOME with INFO.orginalChrom, and POS with INFO.originalPos, then replace the head with hg19
 - Merge: merge the 18 vcf files by add a column sampleId with the Values defined by FORMAT
+- Implemented by matthew
 
 ## run snpEff
 ```
@@ -62,9 +50,9 @@ SnpEff on 18K file will be very time consuming, thinking of generate a combined 
 vepVcf='/scratch/Foundation_Medicine/VCFS/combined_variants.vep.vcf' 
 head $vepVcf -n 15 > test2.vep.vcf
 #snpEff -Xmx4g -v GRCh37.p13.RefSeq test2.vep.vcf > test2.vep.eff.vcf
-#manual check INFO.ANN: it is consistence with vep in all cases for genename, c. p., effect, etc
+#manual check INFO.ANN: 
+    #? it is consistence with vep in all cases for genename, c. p., effect, etc
 #run
-
 vepEffVcf='/scratch/Foundation_Medicine/VCFS/combined_variants.vep.snpEff.vcf'
 snpEff -Xmx10g -v GRCh37.p13.RefSeq $vepVcf > $vepEffVcf
 ```
@@ -85,12 +73,12 @@ snpEff -Xmx10g -v GRCh37.p13.RefSeq $vepVcf > $vepEffVcf
     todo: summarise by gene name
 * vep.eff.vcf
 
-## error and warning messages
+## error and warning messages 
+    #> dig them out later
 ```
 ERRORS: Some errors were detected
 Error type      Number of errors
 ERROR_CHROMOSOME_NOT_FOUND      16
-
 
 WARNINGS: Some warning were detected
 Warning type    Number of warnings
@@ -103,21 +91,13 @@ WARNING_TRANSCRIPT_NO_START_CODON       3052
 WARNING_TRANSCRIPT_NO_STOP_CODON        186
 ```
 
-* report the vcf headers: anno of the fields and INFO subfields
 ## add the snpEff annotated vcf_merged to database
-* run variant_normalization
-*
+* run allele_normalization
+* report the vcf headers: anno of the fields and INFO subfields
+* implemented by matthew
 
-## download the patient info
-* visit [gdc for FM-ad](https://portal.gdc.cancer.gov/repository?facetTab=files&filters=%7B%22op%22%3A%22and%22%2C%22content%22%3A%5B%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22cases.project.project_id%22%2C%22value%22%3A%5B%22FM-AD%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.data_category%22%2C%22value%22%3A%5B%22Simple%20Nucleotide%20Variation%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.data_format%22%2C%22value%22%3A%5B%22MAF%22%5D%7D%7D%2C%7B%22op%22%3A%22in%22%2C%22content%22%3A%7B%22field%22%3A%22files.data_type%22%2C%22value%22%3A%5B%22Aggregated%20Somatic%20Mutation%22%5D%7D%7D%5D%7D&searchTableTab=files)
-* select Aggregated Somatic Mutation (via FoudationOne Variant Aggregation and Masking)
-* within cart
-    * download cart > the MAF files
-    * download Clinical, SampleSheet
-## normalize the table
-
-
-## calculate allele freq: do gene level first, no filtering, on the whole cohort
+## calculate allele freq
+### test: do gene level first, no filtering, on the whole cohort
 * clincal.csv: > sampleId, tumorType # later using disease type from MAF files (sampleSheet)
 * vcfCombined:  Hugo_Symbol, sampleId
     * using python parser: 
@@ -126,48 +106,33 @@ WARNING_TRANSCRIPT_NO_STOP_CODON        186
     cat /scratch/Foundation_Medicine/VCFS/OLD_BACKUPS/combined_variants.vep.snpEff.vcf | sed '/^#/d' | python ~/github/vonc/main.py > variant_call.csv
     ```
 ```calcFreq.R```
-<!--
-```python
-tmp = pd.read_csv('variant_call.csv')
-tmp.CaseID.nunique()
-```
--->
 
-## download the 42 clinical files and merger them
+### prepare the patient cancertype data
+* download the 42 clinical files and merger them
 ```
 python merge_clinical.py */*.tsv > clinical_merged.csv
 ```
-## download the TCGA mapping from the FM paper supplemental table 3 and do the mapping
+* download the TCGA mapping from the FM paper supplemental table 3 and do the mapping
 ```R
 tmp = read.csv('clinical.gdc_download_20180911_180824.513845/clinical_merged.csv')
 clinical = tmp
 res = sqldf('select maf_group, `diagnoses.primary_diagnosis`, count(*) as count_patient from tmp group by maf_group, `diagnoses.primary_diagnosis` order by maf_group, count_patient desc') #where count_patient != 0') #sort(table(diagnoses.primary_diagnosis))
 write.csv(res, 'FM_to_TCGA.csv')
 ```
-
-## manually mapping in excel, and then create a view with patient, tcga_type
+* manually mapping in excel, and then create a view with patient, tcga_type
 ```R
 mapping = read.csv('FM_to_TCGA.manual_mapping.csv', row.names=1)
-sele = mapping$TCGA_type!=''
-sum(mapping[sele, 'count_patient'])
-    #10128
-v_clinical_tcga = sqldf('select `cases.submitter_id` as CaseID, maf_group, `diagnoses.primary_diagnosis` primary_diagnosis, TCGA_type
-    from clinical c join mapping m using (maf_group, `diagnoses.primary_diagnosis`)
-    where TCGA_type != ""')
-dim(v_clinical_tcga)
 ```
-## upload to the database
+* upload to the database
 ```R
 require(RMySQL)
-host='34.235.71.97'
-port=3306
-user='zongzhi_liu'
-password='u5TYN7fg5qpsF475jAtfAZ4E'
+require(configr)
+mycnf = read.config('~/.my.cnf')$client
 dbname='var_dbGAP_phs001179_v1_p1_20180823'
-drv = MySQL()
-con = dbConnect(drv, host=host, port=port, user=user, password=password, dbname=dbname)
+con = dbConnect(MySQL(), host=mycnf$host, port=integer(mycnf$port), user=mycnf$user, password=mycnf$password, dbname=dbname)
 dbWriteTable(con, name='clinical_merged', value=clinical)
 dbWriteTable(con, name='mapping_to_TCGA', value=mapping)
+dbDisconnect(con)
 ```
 
 ## create views to calculate AIs
@@ -274,7 +239,7 @@ order by freq desc
 
 ```
 
-## solution with sqldf and upload the result instead
+## test solution with sqldf
 ```R
 tv_variant_call = dbReadTable(con, 'tv_variant_call')
 tv_clinical_tcga = dbReadTable(con, 'tv_clinical_tcga')
